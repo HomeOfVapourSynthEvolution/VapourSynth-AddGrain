@@ -77,25 +77,25 @@ struct AddGrainData {
     long long idum;
     std::vector<uint8_t> pNoiseSeeds;
     // increase this to lessen inter-frame noise coherence and increase memory
-    std::vector<int8_t> pN[MAXP];
+    std::vector<int16_t> pN[MAXP];
     int nPitch[MAXP], nHeight[MAXP], nSize[MAXP];
     bool process[3];
 };
 
 template<typename T1, typename T2>
 static void UpdateFrame(T1 *dstp, int width, int height, int stride, int plane, int noiseOffs, const AddGrainData *d) {
-    const int8_t * pNW2 = &(d->pN[plane][noiseOffs]);
+    const int16_t * pNW2 = &(d->pN[plane][noiseOffs]);
     const int noisePitch2 = d->nPitch[plane];
     assert(noiseOffs + noisePitch2 * (height - 1) + width <= d->nSize[plane]);
     const unsigned shift1 = sizeof(T1) == 1 ? 0 : 16 - d->vi->format->bitsPerSample;
-    const int shift2 = sizeof(T1) == 1 ? 1 : 257;
-    const int lower = sizeof(T1) == 1 ? -128 : -32768;
-    const int upper = sizeof(T1) == 1 ? 127 : 32767;
+    const int shift2 = sizeof(T1) == 1 ? 8 : 0;
+    const int lower = sizeof(T1) == 1 ? SCHAR_MIN : SHRT_MIN;
+    const int upper = sizeof(T1) == 1 ? SCHAR_MAX : SHRT_MAX;
 
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
             T2 val = (dstp[x] << shift1) ^ lower;
-            T2 tmp = pNW2[x] * shift2;
+            T2 tmp = pNW2[x] >> shift2;
             val = val + tmp < lower ? lower : (val + tmp > upper ? upper : val + tmp);
             dstp[x] = val ^ lower;
             dstp[x] >>= shift1;
@@ -292,7 +292,7 @@ static void VS_CC addgrainCreate(const VSMap *in, VSMap *out, void *userData, VS
         for (int x = 0; x < d.nPitch[plane]; x++)
             lastLine[x] = GaussianRand(mean, pvar[plane], &d);  // things to vertically smooth against
         for (int y = 0; y < h; y++) {
-            std::vector<int8_t>::iterator pNW = d.pN[plane].begin() + y * d.nPitch[plane];
+            std::vector<int16_t>::iterator pNW = d.pN[plane].begin() + y * d.nPitch[plane];
             float lastr = GaussianRand(mean, pvar[plane], &d);  // something to horiz smooth against
             for (int x = 0; x < d.nPitch[plane]; x++) {
                 float r = GaussianRand(mean, pvar[plane], &d);
@@ -300,9 +300,8 @@ static void VS_CC addgrainCreate(const VSMap *in, VSMap *out, void *userData, VS
                 lastr = r;
                 r = lastLine[x] * d.vcorr + r * (1.f - d.vcorr);    // vert corr
                 lastLine[x] = r;
-
                 // set noise block
-                *pNW++ = (int8_t)floor(r + .5f);    // round to nearest
+                *pNW++ = (int16_t)std::round(r * 256.f);
             }
         }
         for (int x = d.storedFrames; x > 0; x--)
