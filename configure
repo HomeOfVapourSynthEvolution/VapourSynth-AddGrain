@@ -1,10 +1,8 @@
 #!/bin/sh
 
 #----------------------------------------------------------------------------
-#  configure script for VapourSynth-AddGrain
+#  configure script for VapourSynth-AddGrain, modified based on d2vsource/configure
 #----------------------------------------------------------------------------
-
-## This script was modified based on d2vsource/configure.
 
 # -- help -------------------------------------------------------------------
 if test x"$1" = x"-h" -o x"$1" = x"--help" ; then
@@ -16,7 +14,8 @@ options:
   --install=PATH           set dir for install library
                            [/usr/local/lib/vapoursynth]
 
-  --clang, --gcc           compile by g++ or clang++ [gcc]
+  --gcc, --clang           compile and link by g++ or clang++ [gcc]
+  --cxx=CXX                use a defined compiler for compilation and linking
   --target-os=OS           build programs to run on OS [auto]
   --cross-prefix=PREFIX    use PREFIX for compilation tools
   --sysroot=SYSROOT        root of cross-build tree
@@ -27,6 +26,7 @@ options:
   --extra-libs=XLIBS          add XLIBS to LIBS
 
   --target=TARGET          set target instruction set [sse2]
+  --disable-simd           disable all x86 SIMD code
 
 EOF
 exit 1
@@ -38,6 +38,7 @@ error_exit()
     echo error: $1
     exit 1
 }
+
 log_echo()
 {
     echo $1
@@ -83,9 +84,6 @@ CXX="g++"
 LD="g++"
 STRIP="strip"
 
-test -n "$(which $CXX 2> /dev/null)" || CXX="g++"
-test -n "$(which $LD 2> /dev/null)" || LD="g++"
-
 DEBUG=""
 
 LIBNAME=""
@@ -94,7 +92,9 @@ CXXFLAGS="-std=c++11 -Wall -I. -I$SRCDIR/include"
 LDFLAGS=""
 SOFLAGS="-shared -Wl,-Bsymbolic"
 DEPLIBS=""
+
 TARGET="-msse2"
+SIMD="-DVS_TARGET_CPU_X86"
 
 # -- options ----------------------------------------------------------------
 echo all command lines: > config.log
@@ -110,8 +110,17 @@ for opt; do
             DEBUG="enabled"
             XCXXFLAGS="$XCXXFLAGS -g"
             ;;
+        --gcc)
+            CXX="g++"
+            LD="g++"
+            ;;
+        --clang)
+            CXX="clang++"
+            LD="clang++"
+            ;;
         --cxx=*)
             CXX="$optarg"
+            LD="$optarg"
             ;;
         --extra-cxxflags=*)
             XCXXFLAGS="$optarg"
@@ -132,16 +141,11 @@ for opt; do
             CXXFLAGS="$CXXFLAGS --sysroot=$optarg"
             LDFLAGS="$LDFLAGS --sysroot=$optarg"
             ;;
-        --gcc)
-            CXX="g++"
-            LD="g++"
-            ;;
-        --clang)
-            CXX="clang++"
-            LD="clang++"
-            ;;
         --target=*)
             TARGET="-m$optarg"
+            ;;
+        --disable-simd)
+            SIMD=""
             ;;
         *)
             error_exit "unknown option $opt"
@@ -149,7 +153,7 @@ for opt; do
     esac
 done
 
-CXXFLAGS="$CXXFLAGS $XCXXFLAGS $TARGET"
+CXXFLAGS="$CXXFLAGS $XCXXFLAGS $TARGET $SIMD"
 LDFLAGS="$LDFLAGS $XLDFLAGS"
 
 CXX="${CROSS}${CXX}"
