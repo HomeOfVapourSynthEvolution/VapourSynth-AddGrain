@@ -88,7 +88,7 @@ DEBUG=""
 
 LIBNAME=""
 
-CXXFLAGS="-std=c++11 -Wall -I. -I$SRCDIR/include"
+CXXFLAGS="-O2 -std=c++11 -mfpmath=sse -Wall -I. -I$SRCDIR/include"
 LDFLAGS=""
 SOFLAGS="-shared -Wl,-Bsymbolic"
 DEPLIBS=""
