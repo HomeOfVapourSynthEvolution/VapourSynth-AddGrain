@@ -1,5 +1,5 @@
 #----------------------------------------------------------------------------
-#  Makefile for VapourSynth-AddGrain, modified based on d2vsource/GNUmakefile
+#  Makefile for VapourSynth-AddGrain
 #----------------------------------------------------------------------------
 
 include config.mak

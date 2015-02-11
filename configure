@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #----------------------------------------------------------------------------
-#  configure script for VapourSynth-AddGrain, modified based on d2vsource/configure
+#  configure script for VapourSynth-AddGrain
 #----------------------------------------------------------------------------
 
 # -- help -------------------------------------------------------------------
@@ -14,8 +14,8 @@ options:
   --install=PATH           set dir for install library
                            [/usr/local/lib/vapoursynth]
 
-  --gcc, --clang           compile and link by g++ or clang++ [gcc]
   --cxx=CXX                use a defined compiler for compilation and linking
+                           [g++]
   --target-os=OS           build programs to run on OS [auto]
   --cross-prefix=PREFIX    use PREFIX for compilation tools
   --sysroot=SYSROOT        root of cross-build tree
@@ -58,8 +58,8 @@ cc_check()
     fi
     echo "int main(void){$4 return 0;}" >> config.log
     echo "int main(void){$4 return 0;}" >> conftest.cpp
-    echo $CXX conftest.cpp -Werror -o conftest $1 $2 >> config.log
-    $CXX conftest.cpp -Werror -o conftest $1 $2 2>> config.log
+    echo $CXX conftest.cpp -o conftest $1 $2 >> config.log
+    $CXX conftest.cpp -o conftest $1 $2 2>> config.log
     ret=$?
     echo $ret >> config.log
     rm -f conftest*
@@ -88,7 +88,7 @@ DEBUG=""
 
 LIBNAME=""
 
-CXXFLAGS="-O2 -std=c++11 -mfpmath=sse -Wall -I. -I$SRCDIR/include"
+CXXFLAGS="-std=c++11 -Wall -I. -I$SRCDIR/include"
 LDFLAGS=""
 SOFLAGS="-shared -Wl,-Bsymbolic"
 DEPLIBS=""
@@ -108,15 +108,7 @@ for opt; do
             ;;
         --enable-debug)
             DEBUG="enabled"
-            XCXXFLAGS="$XCXXFLAGS -g"
-            ;;
-        --gcc)
-            CXX="g++"
-            LD="g++"
-            ;;
-        --clang)
-            CXX="clang++"
-            LD="clang++"
+            CXXFLAGS="$CXXFLAGS -g"
             ;;
         --cxx=*)
             CXX="$optarg"
@@ -193,11 +185,11 @@ log_echo "CXXFLAGS/LDFLAGS checking..."
 if ! cc_check "$CXXFLAGS" "$LDFLAGS"; then
     error_exit "invalid CXXFLAGS/LDFLAGS"
 fi
-if cc_check "-Os -ffast-math $CXXFLAGS" "$LDFLAGS"; then
-    CXXFLAGS="-Os -ffast-math $CXXFLAGS"
+if cc_check "-O2 -ffast-math $CXXFLAGS" "$LDFLAGS"; then
+    CXXFLAGS="-O2 -ffast-math $CXXFLAGS"
 fi
-if cc_check "$CXXFLAGS -fexcess-precision=fast" "$LDFLAGS"; then
-    CXXFLAGS="$CXXFLAGS -fexcess-precision=fast"
+if cc_check "$CXXFLAGS -mfpmath=sse" "$LDFLAGS"; then
+    CXXFLAGS="$CXXFLAGS -mfpmath=sse"
 fi
 
 PKGCONFIGBIN="pkg-config"
