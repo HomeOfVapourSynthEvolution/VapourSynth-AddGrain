@@ -69,59 +69,55 @@
 struct AddGrainData {
     VSNodeRef * node;
     const VSVideoInfo * vi;
-    float var, uvar, hcorr, vcorr;
-    int64_t seed;
     bool constant;
-    bool iset;
     int64_t idum;
     int nStride[MAXP], nHeight[MAXP], nSize[MAXP];
     int storedFrames;
     std::vector<uint8_t> pNoiseSeeds;
     std::vector<int16_t> pN[MAXP];
     std::vector<float> pNF[MAXP];
-    float gset;
     bool process[3];
     float lower[3], upper[3];
 };
 
-static int64_t fastUniformRandL(AddGrainData * d) {
-    return d->idum = 1664525LL * d->idum + 1013904223LL;
+static int64_t fastUniformRandL(int64_t * idum) {
+    return *idum = 1664525LL * *idum + 1013904223LL;
 }
 
 // very fast & reasonably random
-static float fastUniformRandF(AddGrainData * d) {
+static float fastUniformRandF(int64_t * idum) {
     // work with 32-bit IEEE floating point only!
-    fastUniformRandL(d);
-    const uint64_t itemp = 0x3f800000 | (0x007fffff & d->idum);
+    fastUniformRandL(idum);
+    const uint64_t itemp = 0x3f800000 | (0x007fffff & *idum);
     return *reinterpret_cast<const float *>(&itemp) - 1.f;
 }
 
-static float gaussianRand(AddGrainData * d) {
+static float gaussianRand(bool * iset, float * gset, int64_t * idum) {
     float fac, rsq, v1, v2;
 
     // return saved second
-    if (d->iset) {
-        d->iset = false;
-        return d->gset;
+    if (*iset) {
+        *iset = false;
+        return *gset;
     }
 
     do {
-        v1 = 2.f * fastUniformRandF(d) - 1.f;
-        v2 = 2.f * fastUniformRandF(d) - 1.f;
+        v1 = 2.f * fastUniformRandF(idum) - 1.f;
+        v2 = 2.f * fastUniformRandF(idum) - 1.f;
         rsq = v1 * v1 + v2 * v2;
     } while (rsq >= 1.f || rsq == 0.f);
 
     fac = std::sqrt(-2.f * std::log(rsq) / rsq);
 
     // function generates two values every iteration, so save one for later
-    d->gset = v1 * fac;
-    d->iset = true;
+    *gset = v1 * fac;
+    *iset = true;
 
     return v2 * fac;
 }
 
-static float gaussianRand(const float mean, const float variance, AddGrainData * d) {
-    return (variance == 0.f) ? mean : gaussianRand(d) * std::sqrt(variance) + mean;
+static float gaussianRand(const float mean, const float variance, bool * iset, float * gset, int64_t * idum) {
+    return (variance == 0.f) ? mean : gaussianRand(iset, gset, idum) * std::sqrt(variance) + mean;
 }
 
 // on input, plane is the frame plane index (if applicable, 0 otherwise), and on output, it contains the selected noise plane
@@ -149,7 +145,7 @@ static void setRand(int * plane, int * noiseOffs, const int frameNumber, AddGrai
         }
 
         // start noise at random qword in top half of noise area
-        *noiseOffs = static_cast<int>(fastUniformRandF(d) * d->nSize[*plane] / MAXP) & 0xfffffff8;
+        *noiseOffs = static_cast<int>(fastUniformRandF(&d->idum) * d->nSize[*plane] / MAXP) & 0xfffffff8;
     }
 
     assert(*plane >= 0);
@@ -250,23 +246,23 @@ static void VS_CC addgrainCreate(const VSMap *in, VSMap *out, void *userData, VS
     AddGrainData d;
     int err;
 
-    d.var = static_cast<float>(vsapi->propGetFloat(in, "var", 0, &err));
+    float var = static_cast<float>(vsapi->propGetFloat(in, "var", 0, &err));
     if (err)
-        d.var = 1.f;
+        var = 1.f;
 
-    d.uvar = static_cast<float>(vsapi->propGetFloat(in, "uvar", 0, &err));
+    float uvar = static_cast<float>(vsapi->propGetFloat(in, "uvar", 0, &err));
 
-    d.hcorr = static_cast<float>(vsapi->propGetFloat(in, "hcorr", 0, &err));
+    const float hcorr = static_cast<float>(vsapi->propGetFloat(in, "hcorr", 0, &err));
 
-    d.vcorr = static_cast<float>(vsapi->propGetFloat(in, "vcorr", 0, &err));
+    const float vcorr = static_cast<float>(vsapi->propGetFloat(in, "vcorr", 0, &err));
 
-    d.seed = vsapi->propGetInt(in, "seed", 0, &err);
+    int64_t seed = vsapi->propGetInt(in, "seed", 0, &err);
     if (err)
-        d.seed = -1;
+        seed = -1;
 
     d.constant = !!vsapi->propGetInt(in, "constant", 0, &err);
 
-    if (d.hcorr < 0.f || d.hcorr > 1.f || d.vcorr < 0.f || d.vcorr > 1.f) {
+    if (hcorr < 0.f || hcorr > 1.f || vcorr < 0.f || vcorr > 1.f) {
         vsapi->setError(out, "AddGrain: hcorr and vcorr must be between 0.0 and 1.0 (inclusive)");
         return;
     }
@@ -281,17 +277,19 @@ static void VS_CC addgrainCreate(const VSMap *in, VSMap *out, void *userData, VS
         return;
     }
 
-    d.iset = false;
-    if (d.seed < 0)
-        d.seed = std::time(nullptr); // init random
-    d.idum = d.seed;
+    bool iset = false;
+    float gset;
+
+    if (seed < 0)
+        seed = std::time(nullptr); // init random
+    d.idum = seed;
 
     int planesNoise = 1;
     const int alignment = 32;
     d.nStride[0] = (d.vi->width + (alignment - 1)) & ~(alignment - 1); // first plane
     d.nHeight[0] = d.vi->height;
     if (d.vi->format->colorFamily == cmGray) {
-        d.uvar = 0.f;
+        uvar = 0.f;
     } else {
         planesNoise = 2;
         d.nStride[1] = ((d.vi->width >> d.vi->format->subSamplingW) + (alignment - 1)) & ~(alignment - 1); // second and third plane
@@ -306,7 +304,7 @@ static void VS_CC addgrainCreate(const VSMap *in, VSMap *out, void *userData, VS
     if (d.constant)
         nRep[0] = nRep[1] = 1.f;
 
-    const float pvar[] = { d.var, d.uvar };
+    const float pvar[] = { var, uvar };
     std::vector<float> lastLine(d.nStride[0]); // assume plane 0 is the widest one
     const float mean = 0.f;
 
@@ -325,35 +323,35 @@ static void VS_CC addgrainCreate(const VSMap *in, VSMap *out, void *userData, VS
             d.pNF[plane].resize(d.nSize[plane]);
 
         for (int x = 0; x < d.nStride[plane]; x++)
-            lastLine[x] = gaussianRand(mean, pvar[plane], &d); // things to vertically smooth against
+            lastLine[x] = gaussianRand(mean, pvar[plane], &iset, &gset, &d.idum); // things to vertically smooth against
 
         for (int y = 0; y < h; y++) {
             if (d.vi->format->sampleType == stInteger) {
                 auto pNW = d.pN[plane].begin() + d.nStride[plane] * y;
-                float lastr = gaussianRand(mean, pvar[plane], &d); // something to horiz smooth against
+                float lastr = gaussianRand(mean, pvar[plane], &iset, &gset, &d.idum); // something to horiz smooth against
 
                 for (int x = 0; x < d.nStride[plane]; x++) {
-                    float r = gaussianRand(mean, pvar[plane], &d);
+                    float r = gaussianRand(mean, pvar[plane], &iset, &gset, &d.idum);
 
-                    r = lastr * d.hcorr + r * (1.f - d.hcorr); // horizontal correlation
+                    r = lastr * hcorr + r * (1.f - hcorr); // horizontal correlation
                     lastr = r;
 
-                    r = lastLine[x] * d.vcorr + r * (1.f - d.vcorr); // vert corr
+                    r = lastLine[x] * vcorr + r * (1.f - vcorr); // vert corr
                     lastLine[x] = r;
 
                     *pNW++ = static_cast<int16_t>(std::floor(r * 256.f + 0.5f)); // set noise block. round to nearest
                 }
             } else {
                 auto pNW = d.pNF[plane].begin() + d.nStride[plane] * y;
-                float lastr = gaussianRand(mean, pvar[plane], &d); // something to horiz smooth against
+                float lastr = gaussianRand(mean, pvar[plane], &iset, &gset, &d.idum); // something to horiz smooth against
 
                 for (int x = 0; x < d.nStride[plane]; x++) {
-                    float r = gaussianRand(mean, pvar[plane], &d);
+                    float r = gaussianRand(mean, pvar[plane], &iset, &gset, &d.idum);
 
-                    r = lastr * d.hcorr + r * (1.f - d.hcorr); // horizontal correlation
+                    r = lastr * hcorr + r * (1.f - hcorr); // horizontal correlation
                     lastr = r;
 
-                    r = lastLine[x] * d.vcorr + r * (1.f - d.vcorr); // vert corr
+                    r = lastLine[x] * vcorr + r * (1.f - vcorr); // vert corr
                     lastLine[x] = r;
 
                     *pNW++ = r / 255.f; // set noise block
@@ -362,11 +360,11 @@ static void VS_CC addgrainCreate(const VSMap *in, VSMap *out, void *userData, VS
         }
 
         for (int x = d.storedFrames; x > 0; x--)
-            *pns++ = static_cast<uint8_t>(fastUniformRandL(&d) & 0xff); // insert seed, to keep cache happy
+            *pns++ = static_cast<uint8_t>(fastUniformRandL(&d.idum) & 0xff); // insert seed, to keep cache happy
     }
 
-    d.process[0] = d.var > 0.f;
-    d.process[1] = d.process[2] = d.uvar > 0.f;
+    d.process[0] = var > 0.f;
+    d.process[1] = d.process[2] = uvar > 0.f;
 
     for (int plane = 0; plane < d.vi->format->numPlanes; plane++) {
         if (d.process[plane]) {
