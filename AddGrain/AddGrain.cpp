@@ -298,6 +298,12 @@ static void VS_CC addgrainCreate(const VSMap *in, VSMap *out, void *userData, VS
         d.nHeight[1] = d.vi->height >> d.vi->format->subSamplingH;
     }
 
+    if (var <= 0.f && uvar <= 0.f) {
+        vsapi->propSetNode(out, "clip", d.node, paReplace);
+        vsapi->freeNode(d.node);
+        return;
+    }
+
     d.storedFrames = std::min(d.vi->numFrames, 256);
     d.pNoiseSeeds.resize(d.storedFrames * planesNoise);
 
