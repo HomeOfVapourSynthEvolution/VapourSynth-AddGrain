@@ -214,7 +214,7 @@ static const VSFrameRef *VS_CC addgrainGetFrame(int n, int activationReason, voi
                 const int stride = vsapi->getStride(dst, plane);
                 uint8_t * dstp = vsapi->getWritePtr(dst, plane);
 
-                int noisePlane = plane;
+                int noisePlane = (d->vi->format->colorFamily == cmRGB) ? 0 : plane;
                 int noiseOffs = 0;
                 setRand(&noisePlane, &noiseOffs, n, d); // seeds randomness w/ plane & frame
 
@@ -290,6 +290,8 @@ static void VS_CC addgrainCreate(const VSMap *in, VSMap *out, void *userData, VS
     d.nHeight[0] = d.vi->height;
     if (d.vi->format->colorFamily == cmGray) {
         uvar = 0.f;
+    } else if (d.vi->format->colorFamily == cmRGB) {
+        uvar = var;
     } else {
         planesNoise = 2;
         d.nStride[1] = ((d.vi->width >> d.vi->format->subSamplingW) + (alignment - 1)) & ~(alignment - 1); // second and third plane
