@@ -26,3 +26,13 @@ The correlation factors are actually just implemented as exponential smoothing w
 Increase both corr factors can somewhat give clumps, or larger grain size.
 
 And there is an interesting effect with, say, `grain.Add(var=800, hcorr=0, vcorr=0.9)` or any huge amount of strongly vertical grain. It can make a scene look like it is raining.
+
+
+Compilation
+===========
+
+```
+./autogen.sh
+./configure
+make
+```
