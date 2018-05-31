@@ -13,7 +13,7 @@ Usage
 
 * clip: Clip to process. Any planar format with either integer sample type of 8-16 bit depth or float sample type of 32 bit depth is supported.
 
-* var, uvar: The standard deviation (strength) of the luma and chroma noise, 0 is disabled. uvar does nothing for the color family of GRAY and RGB.
+* var, uvar: The standard deviation (strength) of the luma and chroma noise, 0 is disabled. `uvar` does nothing for the color family of GRAY and RGB.
 
 * hcorr, vcorr: Horizontal and vertical correlation, which causes a nifty streaking effect. Range 0.0-1.0
 

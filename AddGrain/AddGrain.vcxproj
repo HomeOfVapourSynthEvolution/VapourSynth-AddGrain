@@ -46,10 +46,10 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <IncludePath>C:\Program Files %28x86%29\VapourSynth\sdk\include;$(IncludePath)</IncludePath>
+    <IncludePath>C:\Program Files %28x86%29\VapourSynth\sdk\include\vapoursynth;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>C:\Program Files %28x86%29\VapourSynth\sdk\include;$(IncludePath)</IncludePath>
+    <IncludePath>C:\Program Files %28x86%29\VapourSynth\sdk\include\vapoursynth;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
