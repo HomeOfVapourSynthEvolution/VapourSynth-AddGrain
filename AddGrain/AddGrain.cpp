@@ -80,7 +80,6 @@ struct AddGrainData {
     std::vector<int16_t> pN[MAXP];
     std::vector<float> pNF[MAXP];
     bool process[3];
-    float lower[3], upper[3];
 };
 
 static inline int64_t fastUniformRandL(int64_t * idum) noexcept {
@@ -157,9 +156,8 @@ static void setRand(int * plane, int * noiseOffs, const int frameNumber, AddGrai
     assert(*noiseOffs < d->nSize[*plane]); // minimal check
 }
 
-template<typename T1, typename T2>
-static void updateFrame(T1 * VS_RESTRICT dstp, const int width, const int height, const int stride, const int noisePlane, const int noiseOffs, const int plane,
-                        const AddGrainData * const VS_RESTRICT d) {
+template<typename T1, typename T2 = void>
+static void updateFrame(T1 * VS_RESTRICT dstp, const int width, const int height, const int stride, const int noisePlane, const int noiseOffs, const AddGrainData * const VS_RESTRICT d) {
     const int shift1 = (sizeof(T1) == sizeof(uint8_t)) ? 0 : 16 - d->vi->format->bitsPerSample;
     constexpr int shift2 = (sizeof(T1) == sizeof(uint8_t)) ? 8 : 0;
     constexpr int lower = std::numeric_limits<T2>::min();
@@ -183,14 +181,13 @@ static void updateFrame(T1 * VS_RESTRICT dstp, const int width, const int height
 }
 
 template<>
-void updateFrame<float, void>(float * VS_RESTRICT dstp, const int width, const int height, const int stride, const int noisePlane, const int noiseOffs, const int plane,
-                              const AddGrainData * const VS_RESTRICT d) {
+void updateFrame(float * VS_RESTRICT dstp, const int width, const int height, const int stride, const int noisePlane, const int noiseOffs, const AddGrainData * const VS_RESTRICT d) {
     const float * pNW = d->pNF[noisePlane].data() + noiseOffs;
     assert(noiseOffs + d->nStride[noisePlane] * (height - 1) + stride <= d->nSize[noisePlane]);
 
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++)
-            dstp[x] = std::min(std::max(dstp[x] + pNW[x], d->lower[plane]), d->upper[plane]);
+            dstp[x] += pNW[x];
 
         dstp += stride;
         pNW += d->nStride[noisePlane];
@@ -223,11 +220,11 @@ static const VSFrameRef *VS_CC addgrainGetFrame(int n, int activationReason, voi
                 setRand(&noisePlane, &noiseOffs, n, d); // seeds randomness w/ plane & frame
 
                 if (d->vi->format->bytesPerSample == 1)
-                    updateFrame<uint8_t, int8_t>(dstp, width, height, stride, noisePlane, noiseOffs, plane, d);
+                    updateFrame<uint8_t, int8_t>(dstp, width, height, stride, noisePlane, noiseOffs, d);
                 else if (d->vi->format->bytesPerSample == 2)
-                    updateFrame<uint16_t, int16_t>(reinterpret_cast<uint16_t *>(dstp), width, height, stride / 2, noisePlane, noiseOffs, plane, d);
+                    updateFrame<uint16_t, int16_t>(reinterpret_cast<uint16_t *>(dstp), width, height, stride / 2, noisePlane, noiseOffs, d);
                 else
-                    updateFrame<float, void>(reinterpret_cast<float *>(dstp), width, height, stride / 4, noisePlane, noiseOffs, plane, d);
+                    updateFrame<float>(reinterpret_cast<float *>(dstp), width, height, stride / 4, noisePlane, noiseOffs, d);
             }
         }
 
@@ -372,18 +369,6 @@ static void VS_CC addgrainCreate(const VSMap *in, VSMap *out, void *userData, VS
 
         d->process[0] = var > 0.f;
         d->process[1] = d->process[2] = uvar > 0.f;
-
-        for (int plane = 0; plane < d->vi->format->numPlanes; plane++) {
-            if (d->process[plane]) {
-                if (plane == 0 || d->vi->format->colorFamily == cmRGB) {
-                    d->lower[plane] = 0.f;
-                    d->upper[plane] = 1.f;
-                } else {
-                    d->lower[plane] = -0.5f;
-                    d->upper[plane] = 0.5f;
-                }
-            }
-        }
     } catch (const std::string & error) {
         vsapi->setError(out, ("AddGrain: " + error).c_str());
         vsapi->freeNode(d->node);
