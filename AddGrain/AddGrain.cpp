@@ -269,10 +269,8 @@ static void VS_CC addgrainCreate(const VSMap *in, VSMap *out, void *userData, VS
 
         d->constant = !!vsapi->propGetInt(in, "constant", 0, &err);
 
-        if (hcorr < 0.f || hcorr > 1.f || vcorr < 0.f || vcorr > 1.f) {
-            vsapi->setError(out, "AddGrain: hcorr and vcorr must be between 0.0 and 1.0 (inclusive)");
-            return;
-        }
+        if (hcorr < 0.f || hcorr > 1.f || vcorr < 0.f || vcorr > 1.f)
+            throw std::string{ "hcorr and vcorr must be between 0.0 and 1.0 (inclusive)" };
 
         bool iset = false;
         float gset;

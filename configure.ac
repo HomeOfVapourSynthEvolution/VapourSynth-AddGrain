@@ -1,4 +1,4 @@
-AC_INIT([AddGrain], [6], [https://github.com/HomeOfVapourSynthEvolution/VapourSynth-AddGrain/issues], [AddGrain], [https://github.com/HomeOfVapourSynthEvolution/VapourSynth-AddGrain/])
+AC_INIT([AddGrain], [7], [https://github.com/HomeOfVapourSynthEvolution/VapourSynth-AddGrain/issues], [AddGrain], [https://github.com/HomeOfVapourSynthEvolution/VapourSynth-AddGrain/])
 
 : ${CXXFLAGS=""}
 
