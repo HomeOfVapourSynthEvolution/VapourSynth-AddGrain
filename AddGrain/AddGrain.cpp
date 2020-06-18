@@ -28,30 +28,14 @@
 #include <algorithm>
 #include <memory>
 #include <string>
-#include <type_traits>
-#include <vector>
 
-#include <VapourSynth.h>
-#include <VSHelper.h>
+#include "AddGrain.h"
 
-// max # of noise planes
-static constexpr int MAXP = 2;
-
-// offset in pixels of the fake plane MAXP relative to plane MAXP-1
-static constexpr int OFFSET_FAKEPLANE = 32;
-
-struct AddGrainData final {
-    VSNodeRef * node;
-    const VSVideoInfo * vi;
-    float var, uvar, hcorr, vcorr;
-    bool constant;
-    bool process[3];
-    int storedFrames, peak;
-    std::vector<uint8_t> pNoiseSeeds;
-    long idum;
-    int nStride[MAXP], nHeight[MAXP], nSize[MAXP];
-    void * pN[MAXP];
-};
+#ifdef ADDGRAIN_X86
+template<typename pixel_t, typename noise_t> extern void updateFrame_sse2(const void * _srcp, void * _dstp, const int width, const int height, const int stride, const int noisePlane, const int noiseOffs, const AddGrainData * const VS_RESTRICT d) noexcept;
+template<typename pixel_t, typename noise_t> extern void updateFrame_avx2(const void * _srcp, void * _dstp, const int width, const int height, const int stride, const int noisePlane, const int noiseOffs, const AddGrainData * const VS_RESTRICT d) noexcept;
+template<typename pixel_t, typename noise_t> extern void updateFrame_avx512(const void * _srcp, void * _dstp, const int width, const int height, const int stride, const int noisePlane, const int noiseOffs, const AddGrainData * const VS_RESTRICT d) noexcept;
+#endif
 
 template<typename T>
 static T getArg(const VSAPI * vsapi, const VSMap * map, const char * key, const T defaultValue) noexcept {
@@ -137,7 +121,7 @@ static void generateNoise(const int planesNoise, const float scale, AddGrainData
         d->nSize[plane] = d->nStride[plane] * h;
 
         // allocate space for noise
-        d->pN[plane] = vs_aligned_malloc(d->nSize[plane] * sizeof(noise_t), 16);
+        d->pN[plane] = malloc(d->nSize[plane] * sizeof(noise_t));
 
         for (int x = 0; x < d->nStride[plane]; x++)
             lastLine[x] = gaussianRand(mean, pvar[plane], iset, gset, d->idum); // things to vertically smooth against
@@ -198,8 +182,10 @@ static void setRand(int & plane, int & noiseOffs, const int frameNumber, AddGrai
 }
 
 template<typename pixel_t, typename noise_t>
-static void updateFrame(const pixel_t * srcp, pixel_t * VS_RESTRICT dstp, const int width, const int height, const int stride, const int noisePlane, const int noiseOffs,
-                        const AddGrainData * const VS_RESTRICT d) noexcept {
+static void updateFrame_c(const void * _srcp, void * _dstp, const int width, const int height, const int stride, const int noisePlane, const int noiseOffs,
+                          const AddGrainData * const VS_RESTRICT d) noexcept {
+    const pixel_t * srcp = reinterpret_cast<const pixel_t *>(_srcp);
+    pixel_t * VS_RESTRICT dstp = reinterpret_cast<pixel_t *>(_dstp);
     const noise_t * pNW = reinterpret_cast<noise_t *>(d->pN[noisePlane]) + noiseOffs;
 
     for (int y = 0; y < height; y++) {
@@ -243,13 +229,7 @@ static const VSFrameRef * VS_CC addgrainGetFrame(int n, int activationReason, vo
                 int noisePlane = (d->vi->format->colorFamily == cmRGB) ? 0 : plane;
                 int noiseOffs = 0;
                 setRand(noisePlane, noiseOffs, n, d); // seed randomness w/ plane & frame
-
-                if (d->vi->format->bytesPerSample == 1)
-                    updateFrame<uint8_t, int8_t>(srcp, dstp, width, height, stride, noisePlane, noiseOffs, d);
-                else if (d->vi->format->bytesPerSample == 2)
-                    updateFrame<uint16_t, int16_t>(reinterpret_cast<const uint16_t *>(srcp), reinterpret_cast<uint16_t *>(dstp), width, height, stride, noisePlane, noiseOffs, d);
-                else
-                    updateFrame<float, float>(reinterpret_cast<const float *>(srcp), reinterpret_cast<float *>(dstp), width, height, stride, noisePlane, noiseOffs, d);
+                d->updateFrame(srcp, dstp, width, height, stride, noisePlane, noiseOffs, d);
             }
         }
 
@@ -266,7 +246,7 @@ static void VS_CC addgrainFree(void * instanceData, VSCore * core, const VSAPI *
     vsapi->freeNode(d->node);
 
     for (int i = 0; i < MAXP; i++)
-        vs_aligned_free(d->pN[i]);
+        free(d->pN[i]);
 
     delete d;
 }
@@ -291,9 +271,60 @@ static void VS_CC addgrainCreate(const VSMap * in, VSMap * out, void * userData,
         d->vcorr = getArg(vsapi, in, "vcorr", 0.0f);
         long seed = getArg(vsapi, in, "seed", -1);
         d->constant = getArg(vsapi, in, "constant", false);
+        const int opt = getArg(vsapi, in, "opt", 0);
 
         if (d->hcorr < 0.0f || d->hcorr > 1.0f || d->vcorr < 0.0f || d->vcorr > 1.0f)
             throw "hcorr and vcorr must be between 0.0 and 1.0 (inclusive)"sv;
+
+        if (opt < 0 || opt > 4)
+            throw "opt must be 0, 1, 2, 3, or 4"sv;
+
+        {
+            if (d->vi->format->bytesPerSample == 1)
+                d->updateFrame = updateFrame_c<uint8_t, int8_t>;
+            else if (d->vi->format->bytesPerSample == 2)
+                d->updateFrame = updateFrame_c<uint16_t, int16_t>;
+            else
+                d->updateFrame = updateFrame_c<float, float>;
+
+#ifdef ADDGRAIN_X86
+            const int iset = instrset_detect();
+            if ((opt == 0 && iset >= 10) || opt == 4) {
+                if (d->vi->format->bytesPerSample == 1) {
+                    d->updateFrame = updateFrame_avx512<uint8_t, int8_t>;
+                    d->step = 64;
+                } else if (d->vi->format->bytesPerSample == 2) {
+                    d->updateFrame = updateFrame_avx512<uint16_t, int16_t>;
+                    d->step = 32;
+                } else {
+                    d->updateFrame = updateFrame_avx512<float, float>;
+                    d->step = 16;
+                }
+            } else if ((opt == 0 && iset >= 8) || opt == 3) {
+                if (d->vi->format->bytesPerSample == 1) {
+                    d->updateFrame = updateFrame_avx2<uint8_t, int8_t>;
+                    d->step = 32;
+                } else if (d->vi->format->bytesPerSample == 2) {
+                    d->updateFrame = updateFrame_avx2<uint16_t, int16_t>;
+                    d->step = 16;
+                } else {
+                    d->updateFrame = updateFrame_avx2<float, float>;
+                    d->step = 8;
+                }
+            } else if ((opt == 0 && iset >= 2) || opt == 2) {
+                if (d->vi->format->bytesPerSample == 1) {
+                    d->updateFrame = updateFrame_sse2<uint8_t, int8_t>;
+                    d->step = 16;
+                } else if (d->vi->format->bytesPerSample == 2) {
+                    d->updateFrame = updateFrame_sse2<uint16_t, int16_t>;
+                    d->step = 8;
+                } else {
+                    d->updateFrame = updateFrame_sse2<float, float>;
+                    d->step = 4;
+                }
+            }
+#endif
+        }
 
         float scale;
         if (d->vi->format->sampleType == stInteger) {
@@ -304,7 +335,7 @@ static void VS_CC addgrainCreate(const VSMap * in, VSMap * out, void * userData,
         }
 
         int planesNoise = 1;
-        d->nStride[0] = (d->vi->width + 15) & ~15; // first plane
+        d->nStride[0] = (d->vi->width + 63) & ~63; // first plane
         d->nHeight[0] = d->vi->height;
         if (d->vi->format->colorFamily == cmGray) {
             d->uvar = 0.0f;
@@ -312,7 +343,7 @@ static void VS_CC addgrainCreate(const VSMap * in, VSMap * out, void * userData,
             d->uvar = d->var;
         } else {
             planesNoise = 2;
-            d->nStride[1] = ((d->vi->width >> d->vi->format->subSamplingW) + 15) & ~15; // second and third plane
+            d->nStride[1] = ((d->vi->width >> d->vi->format->subSamplingW) + 63) & ~63; // second and third plane
             d->nHeight[1] = d->vi->height >> d->vi->format->subSamplingH;
         }
 
@@ -359,6 +390,7 @@ VS_EXTERNAL_API(void) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegiste
                  "hcorr:float:opt;"
                  "vcorr:float:opt;"
                  "seed:int:opt;"
-                 "constant:int:opt;",
+                 "constant:int:opt;"
+                 "opt:int:opt;",
                  addgrainCreate, nullptr, plugin);
 }
