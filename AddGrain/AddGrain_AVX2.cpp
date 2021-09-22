@@ -2,34 +2,34 @@
 #include "AddGrain.h"
 
 template<typename pixel_t, typename noise_t>
-void updateFrame_avx2(const void * _srcp, void * _dstp, const int width, const int height, const int stride, const int noisePlane, const int noiseOffs,
-                      const AddGrainData * const VS_RESTRICT d) noexcept {
-    const pixel_t * srcp = reinterpret_cast<const pixel_t *>(_srcp);
-    pixel_t * dstp = reinterpret_cast<pixel_t *>(_dstp);
-    const noise_t * pNW = reinterpret_cast<noise_t *>(d->pN[noisePlane]) + noiseOffs;
+void updateFrame_avx2(const void* _srcp, void* _dstp, const int width, const int height, const ptrdiff_t stride, const int noisePlane, const int noiseOffs,
+                      const AddGrainData* const VS_RESTRICT d) noexcept {
+    auto srcp{ reinterpret_cast<const pixel_t*>(_srcp) };
+    auto dstp{ reinterpret_cast<pixel_t*>(_dstp) };
+    auto pNW{ reinterpret_cast<noise_t*>(d->pN[noisePlane]) + noiseOffs };
 
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x += d->step) {
+    for (auto y{ 0 }; y < height; y++) {
+        for (auto x{ 0 }; x < width; x += d->step) {
             if constexpr (std::is_same_v<pixel_t, uint8_t>) {
-                const Vec32c sign = 0x80;
-                Vec32c src = Vec32c().load_a(srcp + x);
-                const Vec32c noise = Vec32c().load(pNW + x);
-                src ^= sign;
-                src = add_saturated(src, noise);
-                src ^= sign;
-                src.store_nt(dstp + x);
+                Vec32c sign{ -0x80 };
+                auto val{ Vec32c().load_a(srcp + x) };
+                auto nz{ Vec32c().load(pNW + x) };
+                val ^= sign;
+                val = add_saturated(val, nz);
+                val ^= sign;
+                val.store_nt(dstp + x);
             } else if constexpr (std::is_same_v<pixel_t, uint16_t>) {
-                const Vec16s sign = 0x8000;
-                Vec16s src = Vec16s().load_a(srcp + x);
-                const Vec16s noise = Vec16s().load(pNW + x);
-                src ^= sign;
-                src = add_saturated(src, noise);
-                src ^= sign;
-                min(Vec16us(src), d->peak).store_nt(dstp + x);
+                Vec16s sign{ -0x8000 };
+                auto val{ Vec16s().load_a(srcp + x) };
+                auto nz{ Vec16s().load(pNW + x) };
+                val ^= sign;
+                val = add_saturated(val, nz);
+                val ^= sign;
+                min(Vec16us(val), d->peak).store_nt(dstp + x);
             } else {
-                Vec8f src = Vec8f().load_a(srcp + x);
-                const Vec8f noise = Vec8f().load(pNW + x);
-                (src + noise).store_nt(dstp + x);
+                auto val{ Vec8f().load_a(srcp + x) };
+                auto nz{ Vec8f().load(pNW + x) };
+                (val + nz).store_nt(dstp + x);
             }
         }
 
@@ -39,7 +39,7 @@ void updateFrame_avx2(const void * _srcp, void * _dstp, const int width, const i
     }
 }
 
-template void updateFrame_avx2<uint8_t, int8_t>(const void * _srcp, void * _dstp, const int width, const int height, const int stride, const int noisePlane, const int noiseOffs, const AddGrainData * const VS_RESTRICT d) noexcept;
-template void updateFrame_avx2<uint16_t, int16_t>(const void * _srcp, void * _dstp, const int width, const int height, const int stride, const int noisePlane, const int noiseOffs, const AddGrainData * const VS_RESTRICT d) noexcept;
-template void updateFrame_avx2<float, float>(const void * _srcp, void * _dstp, const int width, const int height, const int stride, const int noisePlane, const int noiseOffs, const AddGrainData * const VS_RESTRICT d) noexcept;
+template void updateFrame_avx2<uint8_t, int8_t>(const void* _srcp, void* _dstp, const int width, const int height, const ptrdiff_t stride, const int noisePlane, const int noiseOffs, const AddGrainData* const VS_RESTRICT d) noexcept;
+template void updateFrame_avx2<uint16_t, int16_t>(const void* _srcp, void* _dstp, const int width, const int height, const ptrdiff_t stride, const int noisePlane, const int noiseOffs, const AddGrainData* const VS_RESTRICT d) noexcept;
+template void updateFrame_avx2<float, float>(const void* _srcp, void* _dstp, const int width, const int height, const ptrdiff_t stride, const int noisePlane, const int noiseOffs, const AddGrainData* const VS_RESTRICT d) noexcept;
 #endif
