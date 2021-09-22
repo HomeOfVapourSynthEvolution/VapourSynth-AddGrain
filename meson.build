@@ -1,20 +1,39 @@
 project('AddGrain', 'cpp',
-  default_options: ['buildtype=release', 'b_ndebug=if-release', 'cpp_std=c++17'],
-  meson_version: '>=0.48.0',
+  default_options: ['buildtype=release', 'warning_level=2', 'b_lto=true', 'b_ndebug=if-release', 'cpp_std=c++17'],
+  license: 'GPL-3.0-or-later',
+  meson_version: '>=0.51.0',
   version: '8'
 )
+
+cxx = meson.get_compiler('cpp')
+
+gcc_syntax = cxx.get_argument_syntax() == 'gcc'
+
+if get_option('buildtype') == 'release'
+  add_project_arguments(gcc_syntax ? ['-fno-math-errno', '-fno-trapping-math'] : '/GS-', language: 'cpp')
+endif
+
+if gcc_syntax
+  vapoursynth_dep = dependency('vapoursynth').partial_dependency(compile_args: true, includes: true)
+  install_dir = vapoursynth_dep.get_variable(pkgconfig: 'libdir') / 'vapoursynth'
+else
+  vapoursynth_dep = dependency('', required: false)
+  install_dir = get_option('libdir') / 'vapoursynth'
+endif
 
 sources = [
   'AddGrain/AddGrain.cpp',
   'AddGrain/AddGrain.h'
 ]
 
-vapoursynth_dep = dependency('vapoursynth').partial_dependency(compile_args: true, includes: true)
-
 libs = []
 
 if host_machine.cpu_family().startswith('x86')
-  add_project_arguments('-DADDGRAIN_X86', '-mfpmath=sse', '-msse2', language: 'cpp')
+  project_args = ['-DADDGRAIN_X86']
+  if gcc_syntax
+    project_args += ['-mfpmath=sse', '-msse2']
+  endif
+  add_project_arguments(project_args, language: 'cpp')
 
   sources += [
     'AddGrain/AddGrain_SSE2.cpp',
@@ -42,14 +61,14 @@ if host_machine.cpu_family().startswith('x86')
   ]
 
   libs += static_library('avx2', 'AddGrain/AddGrain_AVX2.cpp',
+    cpp_args: gcc_syntax ? ['-mavx2', '-mfma'] : '/arch:AVX2',
     dependencies: vapoursynth_dep,
-    cpp_args: ['-mavx2', '-mfma'],
     gnu_symbol_visibility: 'hidden'
   )
 
   libs += static_library('avx512', 'AddGrain/AddGrain_AVX512.cpp',
+    cpp_args: gcc_syntax ? ['-mavx512f', '-mavx512bw', '-mavx512dq', '-mavx512vl', '-mfma'] : '/arch:AVX512',
     dependencies: vapoursynth_dep,
-    cpp_args: ['-mavx512f', '-mavx512bw', '-mavx512dq', '-mavx512vl', '-mfma'],
     gnu_symbol_visibility: 'hidden'
   )
 endif
@@ -58,6 +77,6 @@ shared_module('addgrain', sources,
   dependencies: vapoursynth_dep,
   link_with: libs,
   install: true,
-  install_dir: join_paths(vapoursynth_dep.get_pkgconfig_variable('libdir'), 'vapoursynth'),
+  install_dir: install_dir,
   gnu_symbol_visibility: 'hidden'
 )
