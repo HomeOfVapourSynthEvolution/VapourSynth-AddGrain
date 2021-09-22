@@ -60,8 +60,8 @@ public:
     Vec64c() {
     }
     // Constructor to broadcast the same value into all elements:
-    Vec64c(int8_t i) {
-        zmm = _mm512_set1_epi8(i);
+    Vec64c(int i) {
+        zmm = _mm512_set1_epi8((char)i);
     }
     // Constructor to build from all elements:
     Vec64c(int8_t i0, int8_t i1, int8_t i2, int8_t i3, int8_t i4, int8_t i5, int8_t i6, int8_t i7,
@@ -631,8 +631,8 @@ public:
     Vec64uc() {
     }
     // Constructor to broadcast the same value into all elements:
-    Vec64uc(uint8_t i) {
-        zmm = _mm512_set1_epi8((int8_t)i);
+    Vec64uc(uint32_t i) {
+        zmm = _mm512_set1_epi8((char)i);
     }
     // Constructor to build from all elements:
     Vec64uc(uint8_t i0, uint8_t i1, uint8_t i2, uint8_t i3, uint8_t i4, uint8_t i5, uint8_t i6, uint8_t i7,
@@ -845,8 +845,8 @@ public:
     Vec32s() {
     }
     // Constructor to broadcast the same value into all elements:
-    Vec32s(int16_t i) {
-        zmm = _mm512_set1_epi16(i);
+    Vec32s(int i) {
+        zmm = _mm512_set1_epi16((int16_t)i);
     }
     // Constructor to build from all elements:
     Vec32s(int16_t i0, int16_t i1, int16_t i2, int16_t i3, int16_t i4, int16_t i5, int16_t i6, int16_t i7,
@@ -1200,7 +1200,7 @@ public:
     Vec32us() {
     }
     // Constructor to broadcast the same value into all elements:
-    Vec32us(uint16_t i) {
+    Vec32us(uint32_t i) {
         zmm = _mm512_set1_epi16((int16_t)i);
     }
     // Constructor to build from all elements. Inherit from Vec32s
@@ -1430,13 +1430,13 @@ template <int... i0 >
                 y = _mm512_alignr_epi8(a, a, (flags >> perm_rot_count) & 0xF);
             }
             else { // use pshufb
-                const EList <int8_t, 64> bm = pshufb_mask<Vec32s>(indexs);
+                constexpr EList <int8_t, 64> bm = pshufb_mask<Vec32s>(indexs);
                 return _mm512_shuffle_epi8(a, Vec32s().load(bm.a));
             }
         }
         else {  // different patterns in all lanes
             if constexpr ((flags & perm_cross_lane) == 0) {     // no lane crossing. Use pshufb
-                const EList <int8_t, 64> bm = pshufb_mask<Vec32s>(indexs);
+                constexpr EList <int8_t, 64> bm = pshufb_mask<Vec32s>(indexs);
                 return _mm512_shuffle_epi8(a, Vec32s().load(bm.a));
             }
             else if constexpr ((flags & perm_rotate_big) != 0) {// fits full rotate
@@ -1466,7 +1466,7 @@ template <int... i0 >
             }
 #endif  // AVX512VBMI2
             else {  // full permute needed
-                const EList <int16_t, 32> bm = perm_mask_broad<Vec32s>(indexs);
+                constexpr EList <int16_t, 32> bm = perm_mask_broad<Vec32s>(indexs);
                 y = _mm512_permutexvar_epi16 (Vec32s().load(bm.a), y);
             }
         }
@@ -1512,7 +1512,7 @@ static inline Vec64c permute64(Vec64c const a) {
         }
         else {
             if constexpr ((flags & perm_cross_lane) == 0) {               // no lane crossing. Use pshufb
-                const EList <int8_t, 64> bm = pshufb_mask<Vec64c>(indexs);
+                constexpr EList <int8_t, 64> bm = pshufb_mask<Vec64c>(indexs);
                 return _mm512_shuffle_epi8(a, Vec64c().load(bm.a));
             }
             else if constexpr ((flags & perm_rotate_big) != 0) {          // fits full rotate
@@ -1543,7 +1543,7 @@ static inline Vec64c permute64(Vec64c const a) {
 #endif  // AVX512VBMI2
             else {      // full permute needed
 #ifdef __AVX512VBMI__   // full permute instruction available
-                const EList <int8_t, 64> bm = perm_mask_broad<Vec64c>(indexs);
+                constexpr EList <int8_t, 64> bm = perm_mask_broad<Vec64c>(indexs);
                 y = _mm512_permutexvar_epi8(Vec64c().load(bm.a), y);
 #else
                 // There is no 8-bit full permute. Use 16-bit permute
@@ -1633,7 +1633,7 @@ static inline Vec32s blend32(Vec32s const a, Vec32s const b) {
         if (!(flags & blend_addz)) return y;               // no remaining zeroing
     }
     else { // No special cases
-        const EList <int16_t, 32> bm = perm_mask_broad<Vec32s>(indexs);      // full permute
+        constexpr EList <int16_t, 32> bm = perm_mask_broad<Vec32s>(indexs);      // full permute
         y = _mm512_permutex2var_epi16(a, Vec32s().load(bm.a), b);
     }
     if constexpr ((flags & blend_zeroing) != 0) {          // additional zeroing needed
@@ -1691,7 +1691,7 @@ static inline Vec64c blend64(Vec64c const a, Vec64c const b) {
     }
     else { // No special cases
 #ifdef  __AVX512VBMI__   // AVX512VBMI
-        const EList <int8_t, 64> bm = perm_mask_broad<Vec64c>(indexs);      // full permute
+        constexpr EList <int8_t, 64> bm = perm_mask_broad<Vec64c>(indexs);      // full permute
         y = _mm512_permutex2var_epi8(a, Vec64c().load(bm.a), b);
 #else   // split into two permutes
         constexpr EList<int, 128> L = blend_perm_indexes<64, 0> (indexs);

@@ -1,8 +1,8 @@
 /****************************  vectorf512.h   *******************************
 * Author:        Agner Fog
 * Date created:  2014-07-23
-* Last modified: 2020-03-26
-* Version:       2.01.02
+* Last modified: 2021-08-18
+* Version:       2.01.03
 * Project:       vector class library
 * Description:
 * Header file defining 512-bit floating point vector classes
@@ -18,7 +18,7 @@
 * Each vector object is represented internally in the CPU a 512-bit register.
 * This header file defines operators and functions for these vectors.
 *
-* (c) Copyright 2014-2020 Agner Fog.
+* (c) Copyright 2014-2021 Agner Fog.
 * Apache License version 2.0 or later.
 *****************************************************************************/
 
@@ -658,6 +658,14 @@ static inline Vec16f approx_recipr(Vec16f const a) {
 #else
     return _mm512_rcp14_ps(a);
 #endif
+}
+
+// Newton-Raphson refined approximate reciprocal (23 bit precision)
+static inline Vec16f rcp_nr(Vec16f const a) {
+    Vec16f nr = _mm512_rcp14_ps(a);
+    Vec16f muls = nr * nr * a;
+    Vec16f dbl = nr + nr;
+    return dbl - muls;
 }
 
 // approximate reciprocal squareroot (Faster than 1.f / sqrt(a).
@@ -1551,7 +1559,7 @@ static inline Vec8d permute8(Vec8d const a) {
                     return _mm512_permutevar_pd(a, pmask);
                 }
                 else { // with zeroing. pshufb may be marginally better because it needs no extra zero mask
-                    const EList <int8_t, 64> bm = pshufb_mask<Vec8q>(indexs);
+                    constexpr EList <int8_t, 64> bm = pshufb_mask<Vec8q>(indexs);
                     return _mm512_castsi512_pd(_mm512_shuffle_epi8(_mm512_castpd_si512(y), Vec8q().load(bm.a)));
                 }
             }
@@ -1633,7 +1641,7 @@ static inline Vec16f permute16(Vec16f const a) {
                     return _mm512_permutevar_ps(a, pmask);
                 }
                 else { // with zeroing. pshufb may be marginally better because it needs no extra zero mask
-                    const EList <int8_t, 64> bm = pshufb_mask<Vec16i>(indexs);
+                    constexpr EList <int8_t, 64> bm = pshufb_mask<Vec16i>(indexs);
                     return _mm512_castsi512_ps(_mm512_shuffle_epi8(_mm512_castps_si512(a), Vec16i().load(bm.a)));
                 }
             }
@@ -1690,7 +1698,7 @@ static inline Vec8d blend8(Vec8d const a, Vec8d const b) {
             y = _mm512_shuffle_f64x2(b, a, shuf);
         }
         else {
-            const EList <int64_t, 8> bm = perm_mask_broad<Vec8q>(indexs);
+            constexpr EList <int64_t, 8> bm = perm_mask_broad<Vec8q>(indexs);
             y = _mm512_permutex2var_pd(a, Vec8q().load(bm.a), b);
         }
     }
@@ -1714,7 +1722,7 @@ static inline Vec8d blend8(Vec8d const a, Vec8d const b) {
         y = _mm512_shuffle_pd(b, a, uint8_t(flags >> blend_shufpattern));
     }
     else { // No special cases
-        const EList <int64_t, 8> bm = perm_mask_broad<Vec8q>(indexs);
+        constexpr EList <int64_t, 8> bm = perm_mask_broad<Vec8q>(indexs);
         y = _mm512_permutex2var_pd(a, Vec8q().load(bm.a), b);
     }
     if constexpr ((flags & blend_zeroing) != 0) {          // additional zeroing needed
@@ -1798,7 +1806,7 @@ static inline Vec16f blend16(Vec16f const a, Vec16f const b) {
         }
     }
     else { // No special cases
-        const EList <int32_t, 16> bm = perm_mask_broad<Vec16i>(indexs);
+        constexpr EList <int32_t, 16> bm = perm_mask_broad<Vec16i>(indexs);
         y = _mm512_permutex2var_ps(a, Vec16i().load(bm.a), b);
     }
     if constexpr ((flags & blend_zeroing) != 0) {          // additional zeroing needed

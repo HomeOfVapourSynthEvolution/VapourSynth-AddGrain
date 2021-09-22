@@ -1,8 +1,8 @@
 /****************************  vectorf128.h   *******************************
 * Author:        Agner Fog
 * Date created:  2012-05-30
-* Last modified: 2020-03-26
-* Version:       2.01.02
+* Last modified: 2021-08-18
+* Version:       2.01.03
 * Project:       vector class library
 * Description:
 * Header file defining 128-bit floating point vector classes
@@ -18,7 +18,7 @@
 * Each vector object is represented internally in the CPU as a 128-bit register.
 * This header file defines operators and functions for these vectors.
 *
-* (c) Copyright 2012-2020 Agner Fog.
+* (c) Copyright 2012-2021 Agner Fog.
 * Apache License version 2.0 or later.
 *****************************************************************************/
 
@@ -984,30 +984,33 @@ static inline Vec4fb is_inf(Vec4f const a) {
 // Function is_nan: gives true for elements that are +NAN or -NAN
 // false for finite numbers and +/-INF
 // (the underscore in the name avoids a conflict with a macro in Intel's mathimf.h)
-#if INSTRSET >= 10
 static inline Vec4fb is_nan(Vec4f const a) {
+#if INSTRSET >= 10
     // assume that compiler does not optimize this away with -ffinite-math-only:
     return Vec4fb(_mm_fpclass_ps_mask(a, 0x81));
-}
+
 //#elif defined(__GNUC__) && !defined(__INTEL_COMPILER) && !defined(__clang__)
 //__attribute__((optimize("-fno-unsafe-math-optimizations")))
 //static inline Vec4fb is_nan(Vec4f const a) {
 //    return a != a; // not safe with -ffinite-math-only compiler option
 //}
-#elif (defined(__GNUC__) || defined(__clang__)) && !defined(__INTEL_COMPILER)
-static inline Vec4fb is_nan(Vec4f const a) {
+
+#elif INSTRSET >= 7
+
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(__INTEL_COMPILER)
+    // use assembly to avoid optimizing away with -ffinite-math-only and similar options
     __m128 aa = a;
     __m128i unordered;
     __asm volatile("vcmpps $3,  %1, %1, %0" : "=x" (unordered) :  "x" (aa) );
     return Vec4fb(unordered);
-}
 #else
-static inline Vec4fb is_nan(Vec4f const a) {
-    // assume that compiler does not optimize this away with -ffinite-math-only:
     return _mm_cmp_ps(a, a, 3); // compare unordered
-    // return a != a; // This is not safe with -ffinite-math-only, -ffast-math, or /fp:fast compiler option
-}
 #endif
+#else
+return a != a; // This is not safe with -ffinite-math-only, -ffast-math, or /fp:fast compiler option
+#endif
+}
+
 
 // Function is_subnormal: gives true for elements that are denormal (subnormal)
 // false for finite numbers, zero, NAN and INF
@@ -1298,6 +1301,14 @@ static inline Vec4f approx_recipr(Vec4f const a) {
 #else  // AVX: 11 bit precision
     return _mm_rcp_ps(a);
 #endif
+}
+
+// Newton-Raphson refined approximate reciprocal (23 bit precision)
+static inline Vec4f rcp_nr(Vec4f const a) {
+    Vec4f nr = _mm_rcp_ps(a);
+    Vec4f muls = nr * nr * a;
+    Vec4f dbl = nr + nr;
+    return dbl - muls;
 }
 
 // approximate reciprocal squareroot (Faster than 1.f / sqrt(a). Relative accuracy better than 2^-11)
@@ -1968,30 +1979,32 @@ static inline Vec2db is_inf(Vec2d const a) {
 // Function is_nan: gives true for elements that are +NAN or -NAN
 // false for finite numbers and +/-INF
 // (the underscore in the name avoids a conflict with a macro in Intel's mathimf.h)
-#if INSTRSET >= 10
 static inline Vec2db is_nan(Vec2d const a) {
+#if INSTRSET >= 10
     // assume that compiler does not optimize this away with -ffinite-math-only:
     return Vec2db(_mm_fpclass_pd_mask(a, 0x81));
-}
-//#elif defined(__GNUC__) && !defined(__INTEL_COMPILER) && !defined(__clang__)
-//__attribute__((optimize("-fno-unsafe-math-optimizations")))
-//static inline Vec2db is_nan(Vec2d const a) {
-//    return a != a; // not safe with -ffinite-math-only compiler option
-//}
-#elif (defined(__GNUC__) || defined(__clang__)) && !defined(__INTEL_COMPILER)
-static inline Vec2db is_nan(Vec2d const a) {
+
+    //#elif defined(__GNUC__) && !defined(__INTEL_COMPILER) && !defined(__clang__)
+    //__attribute__((optimize("-fno-unsafe-math-optimizations")))
+    //static inline Vec4fb is_nan(Vec4f const a) {
+    //    return a != a; // not safe with -ffinite-math-only compiler option
+    //}
+
+#elif INSTRSET >= 7
+
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(__INTEL_COMPILER)
+    // use assembly to avoid optimizing away with -ffinite-math-only and similar options
     __m128d aa = a;
     __m128i unordered;
     __asm volatile("vcmppd $3,  %1, %1, %0" : "=x" (unordered) :  "x" (aa) );
     return Vec2db(unordered);
-}
 #else
-static inline Vec2db is_nan(Vec2d const a) {
-    // assume that compiler does not optimize this away with -ffinite-math-only:
     return _mm_cmp_pd(a, a, 3); // compare unordered
-    // return a != a; // This is not safe with -ffinite-math-only, -ffast-math, or /fp:fast compiler option
-}
 #endif
+#else
+    return a != a; // This is not safe with -ffinite-math-only, -ffast-math, or /fp:fast compiler option
+#endif
+}
 
 
 // Function is_subnormal: gives true for elements that are subnormal (denormal)
@@ -2527,7 +2540,7 @@ static inline Vec4f permute4(Vec4f const a) {
 #if  INSTRSET >= 4 && INSTRSET < 10 // SSSE3, but no compact mask
         else if constexpr ((flags & perm_zeroing) != 0) {
             // Do both permutation and zeroing with PSHUFB instruction
-            const EList <int8_t, 16> bm = pshufb_mask<Vec4i>(indexs);
+            constexpr EList <int8_t, 16> bm = pshufb_mask<Vec4i>(indexs);
             return _mm_castsi128_ps(_mm_shuffle_epi8(_mm_castps_si128(a), Vec4i().load(bm.a)));
         }
 #endif
@@ -2565,7 +2578,7 @@ static inline Vec4f permute4(Vec4f const a) {
         // I don't want to clutter all the branches above with this
         y = _mm_maskz_mov_ps (zero_mask<4>(indexs), y);
 #else  // use broad mask
-        const EList <int32_t, 4> bm = zero_mask_broad<Vec4i>(indexs);
+        constexpr EList <int32_t, 4> bm = zero_mask_broad<Vec4i>(indexs);
         y = _mm_and_ps(_mm_castsi128_ps(Vec4i().load(bm.a)), y);
 #endif
     }
@@ -2602,7 +2615,7 @@ static inline Vec2d blend2(Vec2d const a, Vec2d const b) {
 #elif INSTRSET >= 5  // SSE4.1
         y = _mm_blend_pd (a, b, ((i0 & 2) ? 0x01 : 0) | ((i1 & 2) ? 0x02 : 0));
 #else  // SSE2
-        const EList <int64_t, 2> bm = make_broad_mask<Vec2d>(make_bit_mask<2, 0x301>(indexs));
+        constexpr EList <int64_t, 2> bm = make_broad_mask<Vec2d>(make_bit_mask<2, 0x301>(indexs));
         y = selectd(_mm_castsi128_pd(Vec2q().load(bm.a)), b, a);
 #endif
     }
@@ -2647,7 +2660,7 @@ static inline Vec2d blend2(Vec2d const a, Vec2d const b) {
 #if INSTRSET >= 10  // use compact mask
         y = _mm_maskz_mov_pd(zero_mask<2>(indexs), y);
 #else  // use broad mask
-        const EList <int64_t, 2> bm = zero_mask_broad<Vec2q>(indexs);
+        constexpr EList <int64_t, 2> bm = zero_mask_broad<Vec2q>(indexs);
         y = _mm_and_pd(_mm_castsi128_pd(Vec2q().load(bm.a)), y);
 #endif
     }
@@ -2739,7 +2752,7 @@ static inline Vec4f blend4(Vec4f const a, Vec4f const b) {
 #if INSTRSET >= 10  // use compact mask
         y = _mm_maskz_mov_ps(zero_mask<4>(indexs), y);
 #else  // use broad mask
-        const EList <int32_t, 4> bm = zero_mask_broad<Vec4i>(indexs);
+        constexpr EList <int32_t, 4> bm = zero_mask_broad<Vec4i>(indexs);
         y = _mm_and_ps(_mm_castsi128_ps(Vec4i().load(bm.a)), y);
 #endif
     }

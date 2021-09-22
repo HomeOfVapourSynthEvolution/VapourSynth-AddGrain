@@ -1,8 +1,8 @@
 /****************************  vectori512.h   *******************************
 * Author:        Agner Fog
 * Date created:  2014-07-23
-* Last modified: 2020-03-26
-* Version:       2.01.02
+* Last modified: 2021-08-18
+* Version:       2.01.03
 * Project:       vector class library
 * Description:
 * Header file defining 512-bit integer vector classes for 32 and 64 bit integers.
@@ -22,7 +22,7 @@
 * Each vector object is represented internally in the CPU as a 512-bit register.
 * This header file defines operators and functions for these vectors.
 *
-* (c) Copyright 2012-2020 Agner Fog.
+* (c) Copyright 2012-2021 Agner Fog.
 * Apache License version 2.0 or later.
 *****************************************************************************/
 
@@ -1171,7 +1171,7 @@ public:
         return Vec4uq(Vec8q::get_high());
     }
     static constexpr int elementtype() {
-        return 10;
+        return 11;
     }
 };
 
@@ -1360,7 +1360,7 @@ static inline Vec8q permute8(Vec8q const a) {
                 if constexpr ((flags & perm_addz2) == 0) return y;
             }
             else if constexpr ((flags & perm_cross_lane) == 0) {  // no lane crossing. Use pshufb
-                const EList <int8_t, 64> bm = pshufb_mask<Vec8q>(indexs);
+                constexpr EList <int8_t, 64> bm = pshufb_mask<Vec8q>(indexs);
                 return _mm512_shuffle_epi8(y, Vec8q().load(bm.a));
             }
             else {
@@ -1440,7 +1440,7 @@ static inline Vec16i permute16(Vec16i const a) {
                 if constexpr ((flags & perm_addz2) == 0) return y;
             }
             else if constexpr ((flags & perm_cross_lane) == 0) { // no lane crossing. Use pshufb
-                const EList <int8_t, 64> bm = pshufb_mask<Vec16i>(indexs);
+                constexpr EList <int8_t, 64> bm = pshufb_mask<Vec16i>(indexs);
                 return _mm512_shuffle_epi8(a, Vec16i().load(bm.a));
             }
             else {
@@ -1511,7 +1511,7 @@ static inline Vec8q blend8(Vec8q const a, Vec8q const b) {
             y = _mm512_shuffle_i64x2(b, a, shuf);
         }
         else {
-            const EList <int64_t, 8> bm = perm_mask_broad<Vec8q>(indexs);   // full permute
+            constexpr EList <int64_t, 8> bm = perm_mask_broad<Vec8q>(indexs);   // full permute
             y = _mm512_permutex2var_epi64(a, Vec8q().load(bm.a), b);
         }
     }
@@ -1539,7 +1539,7 @@ static inline Vec8q blend8(Vec8q const a, Vec8q const b) {
     // we might use 2 x _mm512_mask(z)_shuffle_epi32 like in blend16 below
 #endif
     else { // No special cases
-        const EList <int64_t, 8> bm = perm_mask_broad<Vec8q>(indexs);   // full permute
+        constexpr EList <int64_t, 8> bm = perm_mask_broad<Vec8q>(indexs);   // full permute
         y = _mm512_permutex2var_epi64(a, Vec8q().load(bm.a), b);
     }
     if constexpr ((flags & blend_zeroing) != 0) {          // additional zeroing needed
@@ -1640,7 +1640,7 @@ static inline Vec16i blend16(Vec16i const a, Vec16i const b) {
     }
 
     else { // No special cases
-        const EList <int32_t, 16> bm = perm_mask_broad<Vec16i>(indexs);   // full permute
+        constexpr EList <int32_t, 16> bm = perm_mask_broad<Vec16i>(indexs);   // full permute
         y = _mm512_permutex2var_epi32(a, Vec16i().load(bm.a), b);
     }
     if constexpr ((flags & blend_zeroing) != 0) {          // additional zeroing needed
