@@ -34,5 +34,6 @@ And there is an interesting effect with, say, `grain.Add(var=800, hcorr=0, vcorr
 ## Compilation
 ```
 meson build
+ninja -C build
 ninja -C build install
 ```
