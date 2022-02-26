@@ -378,7 +378,7 @@ static void VS_CC addgrainCreate(const VSMap* in, VSMap* out, [[maybe_unused]] v
 // Init
 
 VS_EXTERNAL_API(void) VapourSynthPluginInit2(VSPlugin* plugin, const VSPLUGINAPI* vspapi) {
-    vspapi->configPlugin("com.holywu.addgrain", "grain", "Random noise film grain generator", VS_MAKE_VERSION(9, 0), VAPOURSYNTH_API_VERSION, 0, plugin);
+    vspapi->configPlugin("com.holywu.addgrain", "grain", "Random noise film grain generator", VS_MAKE_VERSION(10, 0), VAPOURSYNTH_API_VERSION, 0, plugin);
     vspapi->registerFunction("Add",
                              "clip:vnode;"
                              "var:float:opt;"
