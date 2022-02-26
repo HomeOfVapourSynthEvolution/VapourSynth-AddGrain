@@ -143,7 +143,7 @@ static void generateNoise(const int planesNoise, const float scale, AddGrainData
 
                 // set noise block
                 if constexpr (std::is_integral_v<noise_t>)
-                    *pNW++ = static_cast<noise_t>(std::round(r * scale));
+                    *pNW++ = static_cast<noise_t>(std::round(r) * scale);
                 else
                     *pNW++ = r * scale;
             }
@@ -321,12 +321,12 @@ static void VS_CC addgrainCreate(const VSMap* in, VSMap* out, [[maybe_unused]] v
 #endif
         }
 
-        auto scale{ 0.0f };
+        float scale;
         if (d->vi->format.sampleType == stInteger) {
+            scale = static_cast<float>(1 << (d->vi->format.bitsPerSample - 8));
             d->peak = (1 << d->vi->format.bitsPerSample) - 1;
-            scale = d->peak / 255.0f;
         } else {
-            scale = 1.0f / 255.0f;
+            scale = 1.0f / (d->vi->format.colorFamily == cfRGB ? 255.0f : 219.0f);
         }
 
         if (seed < 0)
