@@ -7,7 +7,7 @@ Ported from AviSynth plugin http://forum.doom9.org/showthread.php?t=111849
 ## Usage
     grain.Add(vnode clip[, float var=1.0, float uvar=0.0, float hcorr=0.0, float vcorr=0.0, int seed=-1, bint constant=False, int opt=0])
 
-- clip: Clip to process. Any planar format with either integer sample type of 8-16 bit depth or float sample type of 32 bit depth is supported.
+- clip: Clip to process. Any format with either integer sample type of 8-16 bit depth or float sample type of 32 bit depth is supported.
 
 - var, uvar: The variance (strength) of the luma and chroma noise, 0 is disabled. `uvar` does nothing for GRAY and RGB formats.
 
@@ -28,7 +28,7 @@ The correlation factors are actually just implemented as exponential smoothing w
 
 Increase both corr factors can somewhat give clumps, or larger grain size.
 
-And there is an interesting effect with, say, `grain.Add(var=800, hcorr=0, vcorr=0.9)` or any huge amount of strongly vertical grain. It can make a scene look like it is raining.
+And there is an interesting effect with, say, `grain.Add(var=800, vcorr=0.9)` or any huge amount of strongly vertical grain. It can make a scene look like it is raining.
 
 
 ## Compilation
